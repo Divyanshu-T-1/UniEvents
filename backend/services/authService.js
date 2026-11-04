@@ -48,21 +48,11 @@ const loginUser = async (userData) => {
 
     const user = await User.findOne({ email });
 
-    // TEMPORARY DEBUG LOGS
-    console.log("LOGIN EMAIL:", JSON.stringify(email));
-    console.log("USER FOUND:", !!user);
-    console.log("PASSWORD TYPE:", typeof password);
-    console.log("PASSWORD LENGTH:", password?.length);
-    console.log("HASH LENGTH:", user?.password?.length);
-    console.log("HASH PREFIX:", user?.password?.substring(0, 7));
 
     // VERIFY PASSWORD
     const isPasswordValid = user
       ? await bcrypt.compare(password, user.password)
       : false;
-
-    console.log("USER ROLE:", user?.role);
-    console.log("PASSWORD MATCH:", isPasswordValid);
 
     if (!user || !isPasswordValid) {
       const error = new Error("Invalid email or password");
