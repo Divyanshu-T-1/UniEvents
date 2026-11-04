@@ -1,4 +1,3 @@
-
 const User = require("../models/User");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -7,15 +6,7 @@ const crypto = require("crypto");
 // REGISTER USER
 const registerUser = async (userData) => {
   try {
-    const {
-      name,
-      email,
-      password,
-      role,
-      rollNo,
-      department,
-      year,
-    } = userData;
+    const { name, email, password, role, rollNo, department, year } = userData;
 
     const existingUser = await User.findOne({
       $or: [{ email }, { rollNo }],
@@ -25,8 +16,9 @@ const registerUser = async (userData) => {
       const error = new Error(
         existingUser.email === email
           ? "Email already registered"
-          : "Roll number already registered"
+          : "Roll number already registered",
       );
+
       error.statusCode = 409;
       throw error;
     }
@@ -57,9 +49,14 @@ const loginUser = async (userData) => {
     const user = await User.findOne({ email });
 
     // TEMPORARY DEBUG LOGS
-    console.log("LOGIN EMAIL:", email);
+    console.log("LOGIN EMAIL:", JSON.stringify(email));
     console.log("USER FOUND:", !!user);
+    console.log("PASSWORD TYPE:", typeof password);
+    console.log("PASSWORD LENGTH:", password?.length);
+    console.log("HASH LENGTH:", user?.password?.length);
+    console.log("HASH PREFIX:", user?.password?.substring(0, 7));
 
+    // VERIFY PASSWORD
     const isPasswordValid = user
       ? await bcrypt.compare(password, user.password)
       : false;
@@ -73,6 +70,7 @@ const loginUser = async (userData) => {
       throw error;
     }
 
+    // GENERATE JWT TOKEN
     const token = jwt.sign(
       {
         userId: user._id,
@@ -81,10 +79,13 @@ const loginUser = async (userData) => {
       process.env.JWT_SECRET,
       {
         expiresIn: "7d",
-      }
+      },
     );
 
-    return { user, token };
+    return {
+      user,
+      token,
+    };
   } catch (error) {
     throw error;
   }
@@ -110,8 +111,7 @@ const forgotPassword = async (email) => {
 
     await user.save();
 
-    // Your email-sending logic should use resetToken
-    // and send the password reset link to the user.
+    // Return reset token for the email-sending logic.
     return resetToken;
   } catch (error) {
     throw error;
@@ -121,14 +121,13 @@ const forgotPassword = async (email) => {
 // RESET PASSWORD
 const resetPassword = async (token, newPassword) => {
   try {
-    const hashedToken = crypto
-      .createHash("sha256")
-      .update(token)
-      .digest("hex");
+    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
 
     const user = await User.findOne({
       resetPasswordToken: hashedToken,
-      resetPasswordExpires: { $gt: Date.now() },
+      resetPasswordExpires: {
+        $gt: Date.now(),
+      },
     });
 
     if (!user) {
@@ -138,6 +137,7 @@ const resetPassword = async (token, newPassword) => {
     }
 
     user.password = await bcrypt.hash(newPassword, 10);
+
     user.resetPasswordToken = undefined;
     user.resetPasswordExpires = undefined;
 
@@ -147,10 +147,10 @@ const resetPassword = async (token, newPassword) => {
   }
 };
 
+// EXPORT SERVICES
 module.exports = {
   registerUser,
   loginUser,
   forgotPassword,
   resetPassword,
 };
-
