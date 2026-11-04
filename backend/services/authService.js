@@ -1,19 +1,43 @@
+
+const User = require("../models/User");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const User = require("../models/User");
 const crypto = require("crypto");
 
+// REGISTER USER
 const registerUser = async (userData) => {
-  const { name, email, password, rollNo, department, year } = userData;
-
-  const hashedPassword = await bcrypt.hash(password, 10);
-
   try {
+    const {
+      name,
+      email,
+      password,
+      role,
+      rollNo,
+      department,
+      year,
+    } = userData;
+
+    const existingUser = await User.findOne({
+      $or: [{ email }, { rollNo }],
+    });
+
+    if (existingUser) {
+      const error = new Error(
+        existingUser.email === email
+          ? "Email already registered"
+          : "Roll number already registered"
+      );
+      error.statusCode = 409;
+      throw error;
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
     const user = await User.create({
       name,
       email,
       password: hashedPassword,
-      role: "student",
+      role: role || "student",
       rollNo,
       department,
       year,
@@ -21,41 +45,29 @@ const registerUser = async (userData) => {
 
     return user;
   } catch (error) {
-    if (error.code === 11000) {
-      if (error.keyPattern?.email) {
-        const duplicateError = new Error("Email is already registered");
-
-        duplicateError.statusCode = 409;
-        throw duplicateError;
-      }
-
-      if (error.keyPattern?.rollNo) {
-        const duplicateError = new Error("Roll number is already registered");
-
-        duplicateError.statusCode = 409;
-        throw duplicateError;
-      }
-    }
-
     throw error;
   }
 };
 
+// LOGIN USER
 const loginUser = async (userData) => {
   try {
     const { email, password } = userData;
 
     const user = await User.findOne({ email });
 
-    if (!user) {
-      const error = new Error("Invalid email or password");
-      error.statusCode = 401;
-      throw error;
-    }
+    // TEMPORARY DEBUG LOGS
+    console.log("LOGIN EMAIL:", email);
+    console.log("USER FOUND:", !!user);
 
-    const isPasswordValid = await bcrypt.compare(password, user.password);
+    const isPasswordValid = user
+      ? await bcrypt.compare(password, user.password)
+      : false;
 
-    if (!isPasswordValid) {
+    console.log("USER ROLE:", user?.role);
+    console.log("PASSWORD MATCH:", isPasswordValid);
+
+    if (!user || !isPasswordValid) {
       const error = new Error("Invalid email or password");
       error.statusCode = 401;
       throw error;
@@ -69,74 +81,70 @@ const loginUser = async (userData) => {
       process.env.JWT_SECRET,
       {
         expiresIn: "7d",
-      },
+      }
     );
 
-    return {
-      user,
-      token,
-    };
+    return { user, token };
   } catch (error) {
     throw error;
   }
 };
 
+// FORGOT PASSWORD
 const forgotPassword = async (email) => {
-  const user = await User.findOne({ email: email.toLowerCase().trim() });
+  try {
+    const user = await User.findOne({ email });
 
-  // Return a generic success response to avoid revealing registered emails
-  if (!user) {
-    return;
-  }
+    if (!user) {
+      return;
+    }
 
-  // Generate a secure random token
-  const resetToken = crypto.randomBytes(32).toString("hex");
+    const resetToken = crypto.randomBytes(32).toString("hex");
 
-  // Hash the token before storing it in the database
-  const hashedToken = crypto
-    .createHash("sha256")
-    .update(resetToken)
-    .digest("hex");
+    user.resetPasswordToken = crypto
+      .createHash("sha256")
+      .update(resetToken)
+      .digest("hex");
 
-  user.resetPasswordToken = hashedToken;
+    user.resetPasswordExpires = Date.now() + 10 * 60 * 1000;
 
-  // Token expires after 15 minutes
-  user.resetPasswordExpires = Date.now() + 15 * 60 * 1000;
+    await user.save();
 
-  await user.save();
-
-  // Generate frontend reset URL
-  const resetURL = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
-
-  const { sendPasswordResetEmail } = require("./emailService");
-
-  await sendPasswordResetEmail(user.email, resetURL);
-};
-
-const resetPassword = async (token, newPassword) => {
-  // Hash the token received from the frontend
-  const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
-
-  // Find user with a valid, non-expired reset token
-  const user = await User.findOne({
-    resetPasswordToken: hashedToken,
-    resetPasswordExpires: { $gt: Date.now() },
-  });
-
-  if (!user) {
-    const error = new Error("Invalid or expired password reset link");
-    error.statusCode = 400;
+    // Your email-sending logic should use resetToken
+    // and send the password reset link to the user.
+    return resetToken;
+  } catch (error) {
     throw error;
   }
+};
 
-  // Hash the new password
-  user.password = await bcrypt.hash(newPassword, 10);
+// RESET PASSWORD
+const resetPassword = async (token, newPassword) => {
+  try {
+    const hashedToken = crypto
+      .createHash("sha256")
+      .update(token)
+      .digest("hex");
 
-  // Invalidate the reset token after successful use
-  user.resetPasswordToken = undefined;
-  user.resetPasswordExpires = undefined;
+    const user = await User.findOne({
+      resetPasswordToken: hashedToken,
+      resetPasswordExpires: { $gt: Date.now() },
+    });
 
-  await user.save();
+    if (!user) {
+      const error = new Error("Invalid or expired reset token");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    user.password = await bcrypt.hash(newPassword, 10);
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+
+    await user.save();
+  } catch (error) {
+    throw error;
+  }
 };
 
 module.exports = {
@@ -145,3 +153,4 @@ module.exports = {
   forgotPassword,
   resetPassword,
 };
+
