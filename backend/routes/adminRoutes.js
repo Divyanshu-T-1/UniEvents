@@ -3,6 +3,7 @@ const express = require("express");
 const {
   getDashboardStats,
   getAllUsers,
+  createFaculty,
 } = require("../controllers/adminController");
 
 const authMiddleware = require("../middleware/authMiddleware");
@@ -20,5 +21,13 @@ router.get(
 
 // Get all university users
 router.get("/users", authMiddleware, authorizeRoles("admin"), getAllUsers);
+
+// Create Faculty account
+router.post(
+  "/faculty",
+  authMiddleware,
+  authorizeRoles("admin"),
+  createFaculty,
+);
 
 module.exports = router;

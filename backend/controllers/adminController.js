@@ -38,7 +38,27 @@ const getAllUsers = async (req, res) => {
   }
 };
 
+const createFaculty = async (req, res) => {
+  try {
+    const faculty = await adminService.createFaculty(req.body);
+
+    res.status(201).json({
+      success: true,
+      message: "Faculty account created successfully",
+      data: faculty,
+    });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+
+    res.status(statusCode).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
 module.exports = {
   getDashboardStats,
   getAllUsers,
+  createFaculty,
 };
